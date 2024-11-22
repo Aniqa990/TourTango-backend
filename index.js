@@ -79,7 +79,7 @@ app.post('/addPackage', async (req, res) => {
         await new Promise((resolve, reject) => {
             const query = `
                 INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
-                VALUES (?, ?, ?, ?, STR_TO_DATE(?, '%Y-%m-%d'), STR_TO_DATE(?, '%Y-%m-%d'), ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             `;
             connection.query(
                 query,
