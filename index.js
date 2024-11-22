@@ -1,36 +1,3 @@
-// const express = require('express');
-// const mysql = require('mysql');
-// const app = express();
-// const port = 3000;
-
-// // MySQL connection
-// const connection = mysql.createConnection({
-// host: 'localhost',
-// user: 'root',
-// password: '',
-// database: 'tourtango'
-// });
-
-// connection.connect((err) => {
-// if (err) throw err;
-// console.log('Connected to MySQL database!');
-// });
-
-// app.use(express.json());
-
-// // Define a route
-// app.get('/api/data', (req, res) => {
-// connection.query('SELECT * FROM tourcompany', (err, results) => {
-// if (err) throw err;
-// res.json(results);
-// });
-// });
-
-// app.listen(port, () => {
-// console.log(`Server running at http://localhost:${port}`);
-// });
-
-
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -59,17 +26,41 @@ connection.connect((err) => {
     console.log('Connected to MySQL');
 });
 
-// Sample route to fetch data
-app.get('/data', (req, res) => {
-    const query = 'SELECT * FROM tourCompany'; // Replace 'your_table' with your table name
-    connection.query(query, (error, results) => {
-        if (error) {
-            res.status(500).send('Database query error');
-            return;
-        }
-        res.json(results);
-    });
+app.get('/home', async (req, res) => {
+    try {
+        // Execute multiple queries concurrently using Promise.all
+        const [tourPackages, topPackages] = await Promise.all([
+            new Promise((resolve, reject) => {
+                const query = `
+                    SELECT * FROM tourPackage;
+                `;
+                connection.query(query, (error, results) => {
+                    if (error) reject(error);
+                    else resolve(results);
+                });
+            }),
+            new Promise((resolve, reject) => {
+                const query = `
+                    SELECT * FROM tourPackage LIMIT 5;
+                `;
+                connection.query(query, (error, results) => {
+                    if (error) reject(error);
+                    else resolve(results);
+                });
+            })
+        ]);
+
+        // Send the response with both the tour packages and the top-rated packages
+        res.json({
+            tourPackages,
+            topPackages
+        });
+    } catch (error) {
+        console.error('Error fetching home data:', error);
+        res.status(500).send('Error fetching data');
+    }
 });
+
 
 // Start the server
 app.listen(port, () => {
