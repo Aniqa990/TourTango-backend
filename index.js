@@ -61,6 +61,43 @@ app.get('/home', async (req, res) => {
     }
 });
 
+app.post('/addPackage', async (req, res) => {
+    try {
+        const {
+            name,
+            price,
+            availability,
+            tourCompanyID,
+            start_date,
+            end_date,
+            transportID,
+            guideID,
+            country
+        } = req.body;
+
+        // Insert the new package into the database
+        await new Promise((resolve, reject) => {
+            const query = `
+                INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            `;
+            connection.query(
+                query,
+                [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country],
+                (error, results) => {
+                    if (error) reject(error);
+                    else resolve(results);
+                }
+            );
+        });
+
+        res.status(201).json({ message: 'Package added successfully' });
+    } catch (error) {
+        console.error('Error adding package:', error);
+        res.status(500).send('Error adding package');
+    }
+});
+
 
 // Start the server
 app.listen(port, () => {
