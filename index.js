@@ -78,8 +78,7 @@ app.post('/addPackage', async (req, res) => {
         // Insert the new package into the database
         await new Promise((resolve, reject) => {
             const query = `
-                INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             `;
             connection.query(
                 query,
@@ -107,8 +106,7 @@ app.post("/company_signup", async (req, res) => {
   
     try {
       const query = `
-        INSERT INTO users (companyName, website, email, password)
-        VALUES (?, ?, ?, ?);
+        INSERT INTO users (companyName, website, email, password) VALUES (?, ?, ?, ?);
       `;
       connection.query(query, [companyName, website, email, password], (error, results) => {
         if (error) {
