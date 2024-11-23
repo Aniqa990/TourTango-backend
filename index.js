@@ -3,6 +3,7 @@ const mysql = require('mysql2');
 const cors = require('cors');
 
 const app = express();
+app.use(bodyParser.json());
 const port = 3000;
 
 // Enable CORS for your Flutter app
@@ -106,7 +107,7 @@ app.post("/company_signup", async (req, res) => {
   
     try {
       const query = `
-        INSERT INTO users (companyName, website, email, password) VALUES (?, ?, ?, ?);
+        INSERT INTO tourCompany (companyName, website, email, password) VALUES (?, ?, ?, ?);
       `;
       connection.query(query, [companyName, website, email, password], (error, results) => {
         if (error) {
