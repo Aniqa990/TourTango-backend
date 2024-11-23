@@ -3,7 +3,6 @@ const mysql = require('mysql2');
 const cors = require('cors');
 
 const app = express();
-app.use(bodyParser.json());
 const port = 3000;
 
 // Enable CORS for your Flutter app
