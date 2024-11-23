@@ -98,6 +98,33 @@ app.post('/addPackage', async (req, res) => {
     }
 });
 
+app.post("/company_signup", async (req, res) => {
+    const { companyName, website, email, password } = req.body;
+  
+    if (!companyName || !email || !password) {
+      return res.status(400).send("All fields are required");
+    }
+  
+    try {
+      const query = `
+        INSERT INTO users (companyName, website, email, password)
+        VALUES (?, ?, ?, ?);
+      `;
+      connection.query(query, [companyName, website, email, password], (error, results) => {
+        if (error) {
+          console.error("Error inserting user:", error);
+          res.status(500).send("Error signing up");
+        } else {
+          res.status(200).send("User signed up successfully");
+        }
+      });
+    } catch (error) {
+      console.error("Error handling signup:", error);
+      res.status(500).send("Server error");
+    }
+  });
+  
+
 
 // Start the server
 app.listen(port, () => {
