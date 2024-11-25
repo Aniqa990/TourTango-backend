@@ -143,12 +143,12 @@ app.post("/company_signup", async (req, res) => {
               availability,
               start_date,
               end_date,
-              guideID,
               country,
               vehicleType,
               driverName,
               pickupLocation,
               companyName,
+              guideName,
               website,
           } = req.body;
 
@@ -164,6 +164,18 @@ app.post("/company_signup", async (req, res) => {
               return res.status(400).json({ message: 'Company not found' });
           }
           const tourCompanyID = tourCompanyResult[0].companyID;
+
+          const guideQuery = `
+              SELECT guideID
+              FROM Guide
+              WHERE name = ? AND availability = Y
+              LIMIT 1;
+          `;
+          const [guideResult] = await connection.promise().query(guideQuery, [guideName]);
+          if (guideResult.length === 0) {
+              return res.status(400).json({ message: 'Guide not found' });
+          }
+          const guideID = guideResult[0].guideID;
 
           // Fetch transport ID
           const transportQuery = `
