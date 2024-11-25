@@ -61,41 +61,41 @@ app.get('/home', async (req, res) => {
     }
 });
 
-app.post('/addPackage', async (req, res) => {
-    try {
-        const {
-            name,
-            price,
-            availability,
-            tourCompanyID,
-            start_date,
-            end_date,
-            transportID,
-            guideID,
-            country
-        } = req.body;
+// app.post('/addPackage', async (req, res) => {
+//     try {
+//         const {
+//             name,
+//             price,
+//             availability,
+//             tourCompanyID,
+//             start_date,
+//             end_date,
+//             transportID,
+//             guideID,
+//             country
+//         } = req.body;
 
-        // Insert the new package into the database
-        await new Promise((resolve, reject) => {
-            const query = `
-                INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-            `;
-            connection.query(
-                query,
-                [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country],
-                (error, results) => {
-                    if (error) reject(error);
-                    else resolve(results);
-                }
-            );
-        });
+//         // Insert the new package into the database
+//         await new Promise((resolve, reject) => {
+//             const query = `
+//                 INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+//             `;
+//             connection.query(
+//                 query,
+//                 [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country],
+//                 (error, results) => {
+//                     if (error) reject(error);
+//                     else resolve(results);
+//                 }
+//             );
+//         });
 
-        res.status(201).json({ message: 'Package added successfully' });
-    } catch (error) {
-        console.error('Error adding package:', error);
-        res.status(500).send('Error adding package');
-    }
-});
+//         res.status(201).json({ message: 'Package added successfully' });
+//     } catch (error) {
+//         console.error('Error adding package:', error);
+//         res.status(500).send('Error adding package');
+//     }
+// });
 
 app.post("/company_signup", async (req, res) => {
     const { companyName, website, email, password } = req.body;
@@ -121,6 +121,149 @@ app.post("/company_signup", async (req, res) => {
       res.status(500).send("Server error");
     }
   });
+  
+  app.route('/packages')
+  // Fetch all packages
+  .get(async (req, res) => {
+      try {
+          const query = 'SELECT * FROM tourPackage';
+          const [results] = await connection.promise().query(query);
+          res.json(results);
+      } catch (error) {
+          console.error('Error fetching packages:', error);
+          res.status(500).send('Error fetching packages');
+      }
+  })
+  // Add a new package
+  .post(async (req, res) => {
+      try {
+          const {
+              name,
+              price,
+              availability,
+              start_date,
+              end_date,
+              guideID,
+              country,
+              vehicleType,
+              driverName,
+              pickupLocation,
+              companyName,
+              website,
+          } = req.body;
+
+          // Fetch company ID
+          const companyQuery = `
+              SELECT companyID
+              FROM tourCompany
+              WHERE companyName = ? AND website = ?
+              LIMIT 1;
+          `;
+          const [tourCompanyResult] = await connection.promise().query(companyQuery, [companyName, website]);
+          if (tourCompanyResult.length === 0) {
+              return res.status(400).json({ message: 'Company not found' });
+          }
+          const tourCompanyID = tourCompanyResult[0].companyID;
+
+          // Fetch transport ID
+          const transportQuery = `
+              SELECT transportID
+              FROM Transportation
+              WHERE vehicleType = ? AND driverName = ? AND pickupLocation = ?
+              LIMIT 1;
+          `;
+          const [transportResult] = await connection.promise().query(transportQuery, [vehicleType, driverName, pickupLocation]);
+          if (transportResult.length === 0) {
+              return res.status(400).json({ message: 'Transport not found' });
+          }
+          const transportID = transportResult[0].transportID;
+
+          // Insert package
+          const insertPackageQuery = `
+              INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+          `;
+          await connection.promise().query(insertPackageQuery, [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country]);
+
+          res.status(201).json({ message: 'Package added successfully' });
+      } catch (error) {
+          console.error('Error adding package:', error);
+          res.status(500).json({ message: 'Error adding package', error: error.message });
+      }
+  });
+
+// Specific Package Operations
+app.route('/packages/:id')
+  // Fetch details of a specific package
+  .get(async (req, res) => {
+      try {
+          const { id } = req.params;
+          const query = 'SELECT * FROM tourPackage WHERE id = ?';
+          const [results] = await connection.promise().query(query, [id]);
+          if (results.length === 0) {
+              return res.status(404).send('Package not found');
+          }
+          res.json(results[0]);
+      } catch (error) {
+          console.error('Error fetching package details:', error);
+          res.status(500).send('Error fetching package details');
+      }
+  })
+  // Update a package
+  .put(async (req, res) => {
+      try {
+          const { id } = req.params;
+          const { name, price, availability, start_date, end_date, country } = req.body;
+          const query = `
+              UPDATE tourPackage
+              SET name = ?, price = ?, availability = ?, start_date = ?, end_date = ?, country = ?
+              WHERE id = ?`;
+          await connection.promise().query(query, [name, price, availability, start_date, end_date, country, id]);
+          res.status(200).send('Package updated successfully');
+      } catch (error) {
+          console.error('Error updating package:', error);
+          res.status(500).send('Error updating package');
+      }
+  })
+  // Delete a package
+  .delete(async (req, res) => {
+      try {
+          const { id } = req.params;
+          const query = 'DELETE FROM tourPackage WHERE id = ?';
+          await connection.promise().query(query, [id]);
+          res.status(200).send('Package deleted successfully');
+      } catch (error) {
+          console.error('Error deleting package:', error);
+          res.status(500).send('Error deleting package');
+      }
+  });
+
+// Route for Tour Guides
+app.route('/guides')
+  // Fetch all guides
+  .get(async (req, res) => {
+      try {
+          const query = 'SELECT * FROM Guide';
+          const [results] = await connection.promise().query(query);
+          res.json(results);
+      } catch (error) {
+          console.error('Error fetching guides:', error);
+          res.status(500).send('Error fetching guides');
+      }
+  })
+  .post(async (req, res) => {
+      try {
+          const { name, availability } = req.body;
+          const query = `INSERT INTO Guide (name, availability) VALUES (?, ?)`;
+          await connection.promise().query(query, [name, availability]);
+          res.status(201).send('Guide added successfully');
+      } catch (error) {
+          console.error('Error adding guide:', error);
+          res.status(500).send('Error adding guide');
+      }
+  });
+
+  
   
 
 
