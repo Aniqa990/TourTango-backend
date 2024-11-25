@@ -168,10 +168,10 @@ app.post("/company_signup", async (req, res) => {
           const guideQuery = `
               SELECT guideID
               FROM Guide
-              WHERE name = ? AND availability = Y
+              WHERE name = ? AND availability = ?
               LIMIT 1;
           `;
-          const [guideResult] = await connection.promise().query(guideQuery, [guideName]);
+          const [guideResult] = await connection.promise().query(guideQuery, [guideName, 'Y']);
           if (guideResult.length === 0) {
               return res.status(400).json({ message: 'Guide not found' });
           }
