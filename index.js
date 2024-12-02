@@ -3,10 +3,13 @@ const mysql = require('mysql2');
 const cors = require('cors');
 
 const app = express();
+
 const port = 3000;
 
 // Enable CORS for your Flutter app
 app.use(cors());
+app.use(express.json());
+
 
 // Database connection
 const pool = mysql.createPool({
