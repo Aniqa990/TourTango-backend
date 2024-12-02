@@ -10,13 +10,13 @@ app.use(cors());
 
 // Database connection
 const pool = mysql.createPool({
-    host: 'sql.freedb.tech',
-    user: 'freedb_tourtango',
-    password: 'S#XxJTpFCt2yWj3',
-    database: 'freedb_TourTango',
-    port: 3306,
+    host: 'localhost',  
+    user: 'root',  
+    password: '',  
+    database: 'TourTango', 
+    port: 3306,  
     waitForConnections: true,
-    connectionLimit: 80, // Adjust based on expected traffic
+    connectionLimit: 80, 
     queueLimit: 0
 });
 
