@@ -1,6 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const schedule = require('node-schedule');
 
 const app = express();
 
@@ -26,13 +27,33 @@ const pool = mysql.createPool({
 const promisePool = pool.promise();
 
 
-app.get('/home', async (req, res) => {
+app.get('/:customerEmail/home', async (req, res) => {
     try {
-        const [tourPackages] = await promisePool.query('SELECT * FROM tourPackage');
-        const [topPackages] = await promisePool.query('SELECT * FROM tourPackage LIMIT 5');
 
-        res.json({ tourPackages, topPackages });
-    } catch (error) {
+        const { customerEmail } = req.params;
+        const connection = await promisePool.getConnection();
+        try {
+            // Get companyID from email
+            const customerQuery = 'SELECT customerID FROM tourpackage_customer WHERE email = ?';
+            const [customerResult] = await connection.query(customerQuery, [customerEmail]);
+            if (customerResult.length === 0) {
+                return res.status(404).json({ message: 'Customer not found' });
+            }
+            const customerID = customerResult[0].customerID;
+
+            // Fetch packages, bookings
+            const [tourPackages] = await connection.query('SELECT * FROM tourPackage');
+            const [topPackages] = await connection.query('SELECT * FROM tourPackage LIMIT 5');
+            const [bookings] = await connection.query('SELECT * FROM booking WHERE customerID = ?', [customerID]);
+            const [faqs] = await connection.query('SELECT * FROM faqs');
+            const transportQuery = 'SELECT * FROM transportation where companyID = ?';
+            //const [guides] = await connection.query(guideQuery, [companyID]);
+            //const [transport] = await connection.query(transportQuery, [companyID]);
+            res.json({ tourPackages, topPackages, bookings, faqs });
+    } finally {
+        connection.release();
+    }}
+    catch (error) {
         console.error('Error fetching home data:', error);
         res.status(500).send('Error fetching data');
     }
@@ -91,7 +112,7 @@ app.route('/:companyEmail/details')
                 const companyID = companyResult[0].companyID;
 
                 // Fetch packages and guides
-                const packageQuery = 'SELECT * FROM tourPackage WHERE tourCompanyID = ?';
+                const packageQuery = 'SELECT * FROM tourPackage t left join guide g on g.guideID=t.guideID left join transportation tr on tr.transportID=t.transportID left join tourpackage_flight tf on t.packageID=tf.tourPackageID left join flight f on f.flightID=tf.flightID WHERE t.tourCompanyID = ?';
                 const guideQuery = 'SELECT * FROM Guide where companyID = ?';
                 const transportQuery = 'SELECT * FROM transportation where companyID = ?';
                 const [packages] = await connection.query(packageQuery, [companyID]);
@@ -109,104 +130,104 @@ app.route('/:companyEmail/details')
     });
 
 
-app.route('/:companyID/packages')
-    .get(async (req, res) => {
-        try {
-            const connection = await promisePool.getConnection();
-            try {
-                const query = 'SELECT * FROM tourPackage where tourCompanyID = ?';
-                const [results] = await connection.query(query, [companyID]);
-                res.json(results);
-            } finally {
-                connection.release();
-            }
-        } catch (error) {
-            console.error('Error fetching packages:', error);
-            res.status(500).send('Error fetching packages');
-        }
-    })
-    .post(async (req, res) => {
-        try {
-            const {
-                name,
-                price,
-                availability,
-                start_date,
-                end_date,
-                country,
-                vehicleType,
-                driverName,
-                pickupLocation,
-                companyName,
-                guideName,
-                website,
-            } = req.body;
+// app.route('/:companyID/packages')
+//     .get(async (req, res) => {
+//         try {
+//             const connection = await promisePool.getConnection();
+//             try {
+//                 const query = 'SELECT * FROM tourPackage where tourCompanyID = ?';
+//                 const [results] = await connection.query(query, [companyID]);
+//                 res.json(results);
+//             } finally {
+//                 connection.release();
+//             }
+//         } catch (error) {
+//             console.error('Error fetching packages:', error);
+//             res.status(500).send('Error fetching packages');
+//         }
+//     })
+//     .post(async (req, res) => {
+//         try {
+//             const {
+//                 name,
+//                 price,
+//                 availability,
+//                 start_date,
+//                 end_date,
+//                 country,
+//                 vehicleType,
+//                 driverName,
+//                 pickupLocation,
+//                 companyName,
+//                 guideName,
+//                 website,
+//             } = req.body;
 
-            const connection = await promisePool.getConnection();
-            try {
-                // Fetch company ID
-                const companyQuery = `
-                    SELECT companyID
-                    FROM tourCompany
-                    WHERE companyName = ? AND website = ?
-                    LIMIT 1;
-                `;
-                const [tourCompanyResult] = await connection.query(companyQuery, [companyName, website]);
-                if (tourCompanyResult.length === 0) {
-                    return res.status(400).json({ message: 'Company not found' });
-                }
-                const tourCompanyID = tourCompanyResult[0].companyID;
+//             const connection = await promisePool.getConnection();
+//             try {
+//                 // Fetch company ID
+//                 const companyQuery = `
+//                     SELECT companyID
+//                     FROM tourCompany
+//                     WHERE companyName = ? AND website = ?
+//                     LIMIT 1;
+//                 `;
+//                 const [tourCompanyResult] = await connection.query(companyQuery, [companyName, website]);
+//                 if (tourCompanyResult.length === 0) {
+//                     return res.status(400).json({ message: 'Company not found' });
+//                 }
+//                 const tourCompanyID = tourCompanyResult[0].companyID;
 
-                const guideQuery = `
-                    SELECT guideID
-                    FROM Guide
-                    WHERE name = ? AND availability = ?
-                    LIMIT 1;
-                `;
-                const [guideResult] = await connection.query(guideQuery, [guideName, 'Y']);
-                if (guideResult.length === 0) {
-                    return res.status(400).json({ message: 'Guide not found' });
-                }
-                const guideID = guideResult[0].guideID;
+//                 const guideQuery = `
+//                     SELECT guideID
+//                     FROM Guide
+//                     WHERE name = ? AND availability = ?
+//                     LIMIT 1;
+//                 `;
+//                 const [guideResult] = await connection.query(guideQuery, [guideName, 'Y']);
+//                 if (guideResult.length === 0) {
+//                     return res.status(400).json({ message: 'Guide not found' });
+//                 }
+//                 const guideID = guideResult[0].guideID;
 
-                // Fetch transport ID
-                const transportQuery = `
-                    SELECT transportID
-                    FROM Transportation
-                    WHERE vehicleType = ? AND driverName = ? AND pickupLocation = ?
-                    LIMIT 1;
-                `;
-                const [transportResult] = await connection.query(transportQuery, [vehicleType, driverName, pickupLocation]);
-                if (transportResult.length === 0) {
-                    return res.status(400).json({ message: 'Transport not found' });
-                }
-                const transportID = transportResult[0].transportID;
+//                 // Fetch transport ID
+//                 const transportQuery = `
+//                     SELECT transportID
+//                     FROM Transportation
+//                     WHERE vehicleType = ? AND driverName = ? AND pickupLocation = ?
+//                     LIMIT 1;
+//                 `;
+//                 const [transportResult] = await connection.query(transportQuery, [vehicleType, driverName, pickupLocation]);
+//                 if (transportResult.length === 0) {
+//                     return res.status(400).json({ message: 'Transport not found' });
+//                 }
+//                 const transportID = transportResult[0].transportID;
 
-                // Insert package
-                const insertPackageQuery = `
-                    INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-                `;
-                await connection.query(insertPackageQuery, [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country]);
+//                 // Insert package
+//                 const insertPackageQuery = `
+//                     INSERT INTO tourPackage (name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country)
+//                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+//                 `;
+//                 await connection.query(insertPackageQuery, [name, price, availability, tourCompanyID, start_date, end_date, transportID, guideID, country]);
 
-                res.status(201).json({ message: 'Package added successfully' });
-            } finally {
-                connection.release();
-            }
-        } catch (error) {
-            console.error('Error adding package:', error);
-            res.status(500).json({ message: 'Error adding package', error: error.message });
-        }
-    });
+//                 res.status(201).json({ message: 'Package added successfully' });
+//             } finally {
+//                 connection.release();
+//             }
+//         } catch (error) {
+//             console.error('Error adding package:', error);
+//             res.status(500).json({ message: 'Error adding package', error: error.message });
+//         }
+//     });
 
 
-    // Specific Package Operations
+// Specific Package Operations
 app.route('/packages/:id')
 // Fetch details of a specific package
 .get(async (req, res) => {
     try {
         const { id } = req.params;
-        const query = 'SELECT * FROM tourPackage WHERE packageID = ?';
+        const query = 'SELECT * FROM tourPackage t left join guide g on g.guideID=t.guideID left join transportation tr on tr.transportID=t.transportID left join tourpackage_flight tf on t.packageID=tf.tourPackageID left join flight f on f.flightID=tf.flightID WHERE t.packageID = ?';
         const [results] = await pool.promise().query(query, [id]);
         if (results.length === 0) {
             return res.status(404).send('Package not found');
@@ -221,12 +242,28 @@ app.route('/packages/:id')
 .put(async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, price, availability, start_date, end_date, country } = req.body;
+        const { packageName, availability, guideID, transportID, start_date, end_date, country, price, customerLimit, selectedFlightIds } = req.body;
         const query = `
             UPDATE tourPackage
-            SET name = ?, price = ?, availability = ?, start_date = ?, end_date = ?, country = ?
+            SET 
+            packageName = ?,
+            price = ?,
+            availability = ?,
+            start_date = ?,
+            end_date = ?,
+            country = ?,
+            guideID = ?,
+            transportID = ?
+            customerLimit = ?
             WHERE packageID = ?`;
-        await pool.promise().query(query, [name, price, availability, start_date, end_date, country, id]);
+        await pool.promise().query(query, [packageName, price, availability, start_date, end_date, country, guideID, transportID, customerLimit, id]);
+       
+        for (const flightId of selectedFlightIds) {
+            await pool.promise().query(
+              'INSERT INTO tourPackage_flight (packageID, flightID) VALUES (?, ?)',
+              [id, flightId] 
+            );
+          }
         res.status(200).send('Package updated successfully');
     } catch (error) {
         console.error('Error updating package:', error);
@@ -247,13 +284,27 @@ app.route('/packages/:id')
 });
 
 // Route for Tour Guides
-app.route('/:companyID/guides')
+app.route(':companyEmail/guides')
 // Fetch all guides
 .get(async (req, res) => {
     try {
-        const query = 'SELECT * FROM Guide';
-        const [results] = await pool.promise().query(query);
-        res.json(results);
+        const { companyEmail } = req.params;
+        const connection = await promisePool.getConnection();
+        try {
+            // Get companyID from email
+            const companyQuery = 'SELECT companyID FROM tourCompany WHERE email = ?';
+            const [companyResult] = await connection.query(companyQuery, [companyEmail]);
+            if (companyResult.length === 0) {
+                return res.status(404).json({ message: 'Company not found' });
+            }
+            const companyID = companyResult[0].companyID;
+            // Fetch packages and guides
+            const query = 'SELECT * FROM Guide where companyID = ?';
+            const [results] = await pool.promise().query(query, [companyID]);
+            res.json(results);
+        } finally {
+            connection.release();
+        }
     } catch (error) {
         console.error('Error fetching guides:', error);
         res.status(500).send('Error fetching guides');
@@ -262,10 +313,23 @@ app.route('/:companyID/guides')
 // Add a new guide
 .post(async (req, res) => {
     try {
-        const { name, availability } = req.body;
-        const query = `INSERT INTO Guide (name, availability) VALUES (?, ?)`;
-        await pool.promise().query(query, [name, availability]);
-        res.status(201).send('Guide added successfully');
+        const { companyEmail } = req.params;
+        const { guideName, guideAvailability } = req.body;
+        try {
+            // Get companyID from email
+            const companyQuery = 'SELECT companyID FROM tourCompany WHERE email = ?';
+            const [companyResult] = await connection.query(companyQuery, [companyEmail]);
+            if (companyResult.length === 0) {
+                return res.status(404).json({ message: 'Company not found' });
+            }
+            const companyID = companyResult[0].companyID;
+
+            const query = `INSERT INTO Guide (guideName, guideAvailability, companyID) VALUES (?, ?, ?)`;
+            await pool.promise().query(query, [guideName, guideAvailability, companyID]);
+            res.status(201).send('Guide added successfully');
+        } finally {
+            connection.release();
+        }
     } catch (error) {
         console.error('Error adding guide:', error);
         res.status(500).send('Error adding guide');
@@ -274,11 +338,11 @@ app.route('/:companyID/guides')
 
     // Specific Guide Operations
     app.route('/guides/:id')
-    // Fetch details of a specific package
+    // Fetch details of a specific guide
     .get(async (req, res) => {
         try {
             const { id } = req.params;
-            const query = 'SELECT * FROM guides WHERE guideID = ?';
+            const query = 'SELECT * FROM guide WHERE guideID = ?';
             const [results] = await pool.promise().query(query, [id]);
             if (results.length === 0) {
                 return res.status(404).send('Guide not found');
@@ -293,19 +357,20 @@ app.route('/:companyID/guides')
     .put(async (req, res) => {
         try {
             const { id } = req.params;
-            const { name, price, availability, start_date, end_date, country } = req.body;
+            const { guideName, guideAvailability } = req.body;
             const query = `
                 UPDATE guide
-                SET name = ?, availability = ?
+                SET guideName = ?,
+                guideAvailability = ?
                 WHERE guideID = ?`;
-            await pool.promise().query(query, [name, availability, id]);
+            await pool.promise().query(query, [guideName, guideAvailability, id]);
             res.status(200).send('Guide updated successfully');
         } catch (error) {
             console.error('Error updating guide:', error);
             res.status(500).send('Error updating guide');
         }
     })
-    // Delete a package
+    // Delete a guide
     .delete(async (req, res) => {
         try {
             const { id } = req.params;
@@ -315,6 +380,58 @@ app.route('/:companyID/guides')
         } catch (error) {
             console.error('Error deleting guide:', error);
             res.status(500).send('Error deleting guide');
+        }
+    });
+
+    app.route(':companyEmail/transport')
+    // Fetch all guides
+    .get(async (req, res) => {
+        try {
+            const { companyEmail } = req.params;
+            const connection = await promisePool.getConnection();
+            try {
+                // Get companyID from email
+                const companyQuery = 'SELECT companyID FROM tourCompany WHERE email = ?';
+                const [companyResult] = await connection.query(companyQuery, [companyEmail]);
+                if (companyResult.length === 0) {
+                    return res.status(404).json({ message: 'Company not found' });
+                }
+                const companyID = companyResult[0].companyID;
+                // Fetch packages and guides
+                const query = 'SELECT * FROM transportation where companyID = ?';
+                const [results] = await pool.promise().query(query, [companyID]);
+                res.json(results);
+            } finally {
+                connection.release();
+            }
+        } catch (error) {
+            console.error('Error fetching transportation:', error);
+            res.status(500).send('Error fetching transportation');
+        }
+    })
+    // Add a new transport
+    .post(async (req, res) => {
+        try {
+            const { companyEmail } = req.params;
+            const { vehicleType, driverName, pickupLocation } = req.body;
+            try {
+                // Get companyID from email
+                const companyQuery = 'SELECT companyID FROM tourCompany WHERE email = ?';
+                const [companyResult] = await connection.query(companyQuery, [companyEmail]);
+                if (companyResult.length === 0) {
+                    return res.status(404).json({ message: 'Company not found' });
+                }
+                const companyID = companyResult[0].companyID;
+    
+                const query = `INSERT INTO transportation (vehicleType, driverName, pickupLocation, companyID) VALUES (?, ?, ?)`;
+                await pool.promise().query(query, [vehicleType, driverName, pickupLocation, companyID]);
+                res.status(201).send('Guide added successfully');
+            } finally {
+                connection.release();
+            }
+        } catch (error) {
+            console.error('Error adding transport:', error);
+            res.status(500).send('Error adding transport');
         }
     });
 
@@ -342,7 +459,9 @@ app.route('/:companyID/guides')
           const { vehicleType, driverName, pickupLocation} = req.body;
           const query = `
               UPDATE transportation
-              SET vehicleType = ?, driverName = ?, pickupLocation = ?
+              SET vehicleType = COALESCE(?, vehicleType),
+                driverName = COALESCE(?, driverName),
+                pickupLocation = COALESCE(?, pickupLocation),
               WHERE transportID = ?`;
           await pool.promise().query(query, [vehicleType, driverName, pickupLocation, id]);
           res.status(200).send('transport updated successfully');
@@ -351,7 +470,7 @@ app.route('/:companyID/guides')
           res.status(500).send('Error updating transport');
       }
   })
-  // Delete a package
+  // Delete a transport
   .delete(async (req, res) => {
       try {
           const { id } = req.params;
@@ -363,6 +482,66 @@ app.route('/:companyID/guides')
           res.status(500).send('Error deleting transport');
       }
   });
+
+  // Schedule a job to run daily at midnight
+  schedule.scheduleJob('0 0 * * *', async () => {
+    try {
+        // Update guide availability
+        await promisePool.query(`
+            UPDATE Guides g
+            JOIN TourPackages tp ON g.guideID = tp.guideID
+            SET g.availability = 'Y'
+            WHERE tp.end_date = CURDATE();
+        `);
+
+        // Delete expired packages
+        await promisePool.query(`
+            DELETE FROM TourPackages
+            WHERE end_date = CURDATE();
+        `);
+
+        console.log("Expired packages processed successfully.");
+    } catch (err) {
+        console.error("Error processing expired packages:", err);
+    }
+});
+
+app.route('/flights')
+// Fetch details of a specific transport
+.get(async (req, res) => {
+    try {
+        const query = 'SELECT * FROM flight';
+        const [results] = await pool.promise().query(query);
+        if (results.length === 0) {
+            return res.status(404).send('Flights not found');
+        }
+        res.json(results);
+    } catch (error) {
+        console.error('Error fetching flight details:', error);
+        res.status(500).send('Error fetching flight details');
+    }
+})
+
+// Get customer booking history
+app.get('/:customerEmail/history', (req, res) => {
+  const customerEmail = req.params.customerEmail;
+
+  const customerID = await.promisePool.query('Select customerID from customer where email = ?', [customerEmail]);
+
+  const query = `
+    SELECT * FROM booking_history
+    WHERE booking_history.customer_id = ?;
+  `;
+
+  await.promisePool.query(query, [customerID], (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Error fetching booking history');
+    } else {
+      res.json(results);
+    }
+  });
+});
 
 // // Route for Bookings
 // app.route('/bookings')
