@@ -789,14 +789,21 @@ schedule.scheduleJob("0 0 * * *", async () => {
     // Update guide availability
     await promisePool.query(`
             UPDATE Guides g
-            JOIN TourPackages tp ON g.guideID = tp.guideID
-            SET g.availability = 'Y'
+            JOIN tourPackage tp ON g.guideID = tp.guideID
+            SET g.guideAvailability = 'Y'
             WHERE tp.end_date = CURDATE();
         `);
 
+    await promisePool.query(`
+      DELETE b
+      FROM booking b
+      JOIN tourPackage tp ON b.packageID = tp.packageID
+      WHERE tp.end_date = CURDATE();
+`);
+
     // Delete expired packages
     await promisePool.query(`
-            DELETE FROM TourPackages
+            DELETE FROM tourPackage
             WHERE end_date = CURDATE();
         `);
 
@@ -883,18 +890,17 @@ app.post("/reviews", async (req, res) => {
   await promisePool.query(updateQuery, [reviewId, bookingId]);
 });
 
-app
-  .route("/reviews/:bookingID")
+app.route("/reviews/:bookingID")
   .get(async (req, res) => {
     try {
       const { bookingID } = req.params;
       const query =
-        "SELECT * FROM review r join booking_history h on h.reviewID = r.reviewID where h.booking_id = ?";
+        "SELECT * FROM review r join booking_history h on h.reviewID = r.reviewID where h.booking_id = ? LIMIT 1";
       const [results] = await pool.promise().query(query, [bookingID]);
       if (results.length === 0) {
         return res.status(404).send("Review not found");
       }
-      res.json(results);
+      res.json(results[0]);
     } catch (error) {
       console.error("Error fetching review:", error);
       res.status(500).send("Error fetching review");
@@ -902,12 +908,12 @@ app
   })
   .put(async (req, res) => {
     const { bookingID } = req.params;
-    const { rating, comment } = req.body;
-
+    const { rating, comment, reviewID } = req.body;
+    console.log("body: ", req.body);
     try {
       const updateQuery =
-        "UPDATE review r JOIN booking_history h ON r.reviewID = h.reviewID SET r.rating = ?, r.comment = ? WHERE h.booking_id = ?";
-      await pool.promise().query(updateQuery, [rating, comment, bookingID]);
+        "UPDATE review SET rating = ?, comment = ? WHERE reviewID = ?";
+      await pool.promise().query(updateQuery, [rating, comment, reviewID]);
       res
         .status(200)
         .send({ success: true, message: "Review updated successfully" });
@@ -919,47 +925,88 @@ app
     }
   });
 
-app.post("/createBookingTransaction", async (req, res) => {
-  const {
-    customerEmail,
-    packageId,
-    bookingDate,
-    noOfPeople,
-    paymentAmount,
-    payment_mode,
-  } = req.body;
+// app.post("/createBookingTransaction", async (req, res) => {
+//   const {
+//     customerEmail,
+//     packageId,
+//     bookingDate,
+//     noOfPeople,
+//     paymentAmount,
+//     payment_mode,
+//   } = req.body;
 
-  try {
-    const [customerResult] = await promisePool.query(
-      "Select customerID from customer where email = ?",
-      [customerEmail]
-    );
-    const customerID = customerResult[0]?.customerID;
+//   try {
+//     const [customerResult] = await promisePool.query(
+//       "Select customerID from customer where email = ?",
+//       [customerEmail]
+//     );
+//     const customerID = customerResult[0]?.customerID;
 
-    if (!customerID) {
-      return res.status(400).json({ statusMessage: "Customer not found." });
+//     if (!customerID) {
+//       return res.status(400).json({ statusMessage: "Customer not found." });
+//     }
+
+//     const formattedDate = format(new Date(bookingDate), "yyyy-MM-dd");
+
+//     // Start the transaction by calling the stored procedure
+//     const [payment_insert] = await promisePool.query(
+//       "INSERT INTO payment (amount, paymentDate, payment_mode) VALUES (?, ?, ?);",
+//       [paymentAmount, bookingDate, payment_mode]
+//     );
+
+//     const ID = payment_insert.insertId;
+
+//     await promisePool.query(
+//       "INSERT INTO Booking (BookingDate, noOfPeople, packageID, customerID, confirmationStatus, paymentID) VALUES (?, ?, ?, ?, ?, ?);",
+//       [bookingDate, noOfPeople, packageId, customerID, "Y", ID]
+//     );
+//   } catch (err) {
+//     console.error(err);
+//     return res
+//       .status(500)
+//       .json({ statusMessage: "Transaction failed and rolled back." });
+//   }
+// });
+
+
+//create booking
+app.post('/createBookingTransaction', async (req, res) => {
+    const { customerEmail, packageId, bookingDate, noOfPeople, paymentAmount, payment_mode } = req.body;
+
+    try {
+        // Retrieve the customerID based on email
+        const [customerResult] = await promisePool.query('Select customerID from customer where email = ?', [customerEmail]);
+        const customerID = customerResult[0]?.customerID;
+
+        if (!customerID) {
+            return res.status(400).json({ statusMessage: 'Customer not found.' });
+        }
+
+        const formattedDate = format(new Date(bookingDate), "yyyy-MM-dd");
+
+        // Start the transaction by calling the stored procedure
+        await promisePool.query(
+            'CALL CreateBookingTransaction(?, ?, ?, ?, ?, ?, @var_bookingID, @var_paymentID, @statusMessage)',
+            [formattedDate, noOfPeople, packageId, customerID, paymentAmount, payment_mode]
+        );
+
+        // Retrieve the output variables
+        const [outputResults] = await promisePool.query(
+            'SELECT @var_bookingID AS bookingID, @var_paymentID AS paymentID, @statusMessage AS statusMessage'
+        );
+
+        const { bookingID, paymentID, statusMessage } = outputResults[0];
+
+        res.json({
+            statusMessage,
+            bookingID,
+            paymentID
+        });
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ statusMessage: 'Transaction failed and rolled back.' });
     }
-
-    const formattedDate = format(new Date(bookingDate), "yyyy-MM-dd");
-
-    // Start the transaction by calling the stored procedure
-    const [payment_insert] = await promisePool.query(
-      "INSERT INTO payment (amount, paymentDate, payment_mode) VALUES (?, ?, ?);",
-      [paymentAmount, bookingDate, payment_mode]
-    );
-
-    const ID = payment_insert.insertId;
-
-    await promisePool.query(
-      "INSERT INTO Booking (BookingDate, noOfPeople, packageID, customerID, confirmationStatus, paymentID) VALUES (?, ?, ?, ?, ?, ?);",
-      [bookingDate, noOfPeople, packageId, customerID, "Y", ID]
-    );
-  } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ statusMessage: "Transaction failed and rolled back." });
-  }
 });
 
 //fetch bookings
